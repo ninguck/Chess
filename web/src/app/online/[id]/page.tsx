@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import type { Square } from "chess.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,8 +30,8 @@ async function postMove(id: string, body: any) {
 	return res;
 }
 
-export default function OnlineGamePage({ params }: { params: { id: string } }) {
-	const gameId = params.id;
+export default function OnlineGamePage({ params }: { params: Promise<{ id: string }> }) {
+	const { id: gameId } = use(params);
 	const [state, setState] = useState<ServerState | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [orientation, setOrientation] = useState<"white" | "black">("white");
