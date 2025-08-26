@@ -3,11 +3,11 @@ import type { GameStore } from "../GameStore";
 import { GameService } from "../GameService";
 import { sharedStore } from "./store";
 import { RedisGameStore } from "../RedisGameStore";
-import { InMemorySeatStore, RedisSeatStore, type SeatStore, type Seats } from "../SeatStore";
+import { InMemorySeatStore, RedisSeatStore, type SeatStore } from "../SeatStore";
 
-export type CreateResult = { status: 201; body: any };
-export type GetResult = { status: 200; body: any; etag: string } | { status: 304 } | { status: 404 };
-export type MoveResult = { status: 200; body: any } | { status: 400; body: any } | { status: 404 } | { status: 409; body: any };
+export type CreateResult = { status: 201; body: { gameId: string } & Record<string, unknown> };
+export type GetResult = { status: 200; body: Record<string, unknown>; etag: string } | { status: 304 } | { status: 404 };
+export type MoveResult = { status: 200; body: Record<string, unknown> } | { status: 400; body: Record<string, unknown> } | { status: 404 } | { status: 409; body: Record<string, unknown> };
 
 const NameSchema = z.string().trim().min(2).max(20).regex(/^[\w \-]+$/);
 

@@ -19,60 +19,8 @@ type ServerState = {
 	moves?: { from: Square; to: Square; promotion?: "q" | "r" | "b" | "n"; piece?: string; color?: "w" | "b"; san?: string }[];
 };
 
-// Helpers for square arithmetic & path highlights (matching local)
+// Helpers for last-move outline
 const files = ["a","b","c","d","e","f","g","h"] as const;
-function toSquare(file: number, rank: number): Square | null {
-	if (file < 0 || file > 7 || rank < 0 || rank > 7) return null;
-	return `${files[file]}${rank + 1}` as Square;
-}
-function sign(n: number) { return n === 0 ? 0 : n > 0 ? 1 : -1; }
-function computePathSquares(piece: string, from: Square, to: Square): Square[] {
-	const aFile = files.indexOf(from[0] as typeof files[number]);
-	const aRank = Number(from[1]) - 1;
-	const bFile = files.indexOf(to[0] as typeof files[number]);
-	const bRank = Number(to[1]) - 1;
-	const dx = bFile - aFile; const dy = bRank - aRank; const path: Square[] = [];
-	switch (piece) {
-		case "n": {
-			if (Math.abs(dx) === 1 && Math.abs(dy) === 2) {
-				const v = sign(dy), h = sign(dx);
-				const s1 = toSquare(aFile, aRank + v); if (s1) path.push(s1);
-				const s2 = toSquare(aFile, aRank + 2*v); if (s2) path.push(s2);
-				const s3 = toSquare(aFile + h, aRank + 2*v); if (s3) path.push(s3);
-			} else if (Math.abs(dx) === 2 && Math.abs(dy) === 1) {
-				const h = sign(dx), v = sign(dy);
-				const s1 = toSquare(aFile + h, aRank); if (s1) path.push(s1);
-				const s2 = toSquare(aFile + 2*h, aRank); if (s2) path.push(s2);
-				const s3 = toSquare(aFile + 2*h, aRank + v); if (s3) path.push(s3);
-			}
-			break;
-		}
-		case "b": {
-			const ux = sign(dx), uy = sign(dy); let f = aFile + ux, r = aRank + uy;
-			while (f !== bFile && r !== bRank) { const s = toSquare(f, r); if (s) path.push(s); f += ux; r += uy; }
-			const t = toSquare(bFile, bRank); if (t) path.push(t); break;
-		}
-		case "r": {
-			const ux = sign(dx), uy = sign(dy); let f = aFile + ux, r = aRank + uy;
-			while (f !== bFile || r !== bRank) { const s = toSquare(f, r); if (s) path.push(s); f += ux; r += uy; if (ux !== 0 && uy !== 0) break; }
-			const t = toSquare(bFile, bRank); if (t) path.push(t); break;
-		}
-		case "q": {
-			const ux = sign(dx), uy = sign(dy); let f = aFile + ux, r = aRank + uy;
-			while (f !== bFile || r !== bRank) { const s = toSquare(f, r); if (s) path.push(s); f += ux; r += uy; }
-			const t = toSquare(bFile, bRank); if (t) path.push(t); break;
-		}
-		case "p": {
-			const ux = sign(dx), uy = sign(dy);
-			if (ux === 0) { let r = aRank + uy; while (r !== bRank + uy) { const s = toSquare(aFile, r); if (s) path.push(s); r += uy; } }
-			else { const t = toSquare(bFile, bRank); if (t) path.push(t); }
-			break;
-		}
-		case "k": { const t = toSquare(bFile, bRank); if (t) path.push(t); break; }
-	}
-	return path;
-}
-
 function parseFenBoard(fen: string) {
 	const board = fen.split(" ")[0];
 	const rows = board.split("/");
@@ -98,7 +46,6 @@ function diffLastMove(prevFen: string, nextFen: string, moverColor: 'w' | 'b'): 
 		let from: Square | undefined; let to: Square | undefined;
 		for (const sq of a.keys()) { if (!b.has(sq) && (a.get(sq)?.startsWith(moverColor))) { from = sq as Square; break; } }
 		if (!from) {
-			// fallback: find any square that changed from moverColor piece
 			for (const [sq, piece] of a) { if (piece.startsWith(moverColor) && a.get(sq) !== b.get(sq)) { from = sq as Square; break; } }
 		}
 		for (const [sq, piece] of b) { if (piece.startsWith(moverColor) && a.get(sq) !== b.get(sq)) { to = sq as Square; break; } }
@@ -121,7 +68,8 @@ async function fetchState(id: string, token: string | null, name: string | null,
 	return { state: data, etag, status: res.status };
 }
 
-async function postMove(id: string, body: any) {
+type MovePostBody = { expectedVersion: number; from: Square; to: Square; playerToken: string; displayName?: string };
+async function postMove(id: string, body: MovePostBody) {
 	const res = await fetch(`/api/games/${id}/move`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 	return res;
 }
@@ -167,7 +115,6 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 	const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
 	const [legalTargets, setLegalTargets] = useState<Square[]>([]);
 	const [lastMove, setLastMove] = useState<{ from?: Square; to?: Square } | null>(null);
-	const [moves, setMoves] = useState<string[]>([]);
 
 	const canDrag = useMemo(() => {
 		if (!state) return false;
@@ -188,19 +135,10 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 			// Auto-orient based on seat assignment
 			if (s.seat === 'w' && orientation !== 'white') setOrientation('white');
 			if (s.seat === 'b' && orientation !== 'black') setOrientation('black');
-			// Reconstruct a Chess instance to derive PGN/move list
-			try {
-				const ch = new Chess();
-				// naive reconstruction: if from start position, derive from SAN list via difference
-				// As we only have FEN snapshots, we will track lastMove and append to moves list for now
-				if (lastMove?.from && lastMove?.to) {
-					setMoves((prev) => [...prev, `${lastMove.from}-${lastMove.to}`]);
-				}
-			} catch {}
 			prevFenRef.current = s.fen; prevVersionRef.current = s.version;
 			setState(s); if (etag) etagRef.current = etag;
 		}
-	}, [gameId, displayName, lastMove, orientation]);
+	}, [gameId, displayName, orientation]);
 
 	useEffect(() => {
 		load();

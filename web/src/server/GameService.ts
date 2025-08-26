@@ -1,5 +1,6 @@
 import { ChessService, GameState } from "@/lib/ChessService";
 import type { GameStore, StoredGame } from "./GameStore";
+import type { Square } from "chess.js";
 
 export class GameService {
 	constructor(private readonly store: GameStore) {}
@@ -16,7 +17,7 @@ export class GameService {
 		if (!current) return null;
 		if (current.version !== expectedVersion) return current;
 		const svc = ChessService.fromState(current);
-		const moved = svc.makeMove(from as any, to as any, promotion);
+		const moved = svc.makeMove(from as Square, to as Square, promotion);
 		if (!moved) return current;
 		const newState: GameState = svc.getState();
 		return this.store.saveGame(id, newState);

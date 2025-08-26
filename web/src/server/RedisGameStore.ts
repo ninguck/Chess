@@ -1,7 +1,7 @@
 import type { GameStore, StoredGame } from "./GameStore";
 import type { GameState } from "@/lib/ChessService";
 
-async function upstashPath(path: string, url: string, token: string, method: "GET" | "POST" = "POST"): Promise<any> {
+async function upstashPath(path: string, url: string, token: string, method: "GET" | "POST" = "POST"): Promise<unknown> {
 	const res = await fetch(`${url.replace(/\/$/, "")}/${path.replace(/^\//, "")}`, {
 		method,
 		headers: {
@@ -13,7 +13,7 @@ async function upstashPath(path: string, url: string, token: string, method: "GE
 		try { detail = await res.text(); } catch {}
 		throw new Error(`Upstash error: ${res.status}${detail ? ` - ${detail}` : ""}`);
 	}
-	return res.json();
+	return res.json() as Promise<unknown>;
 }
 
 function gameKey(id: string) { return `game:${id}`; }
@@ -34,7 +34,7 @@ export class RedisGameStore implements GameStore {
 	async getGame(id: string): Promise<StoredGame | null> {
 		const key = gameKey(id);
 		const json = await upstashPath(`get/${key}`, this.url, this.token, "POST");
-		const value = json?.result as string | null;
+		const value = (json as { result?: string | null })?.result ?? null;
 		if (!value) return null;
 		try {
 			const parsed = JSON.parse(value) as StoredGame;

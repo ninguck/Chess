@@ -23,10 +23,11 @@ export default function StartOnlineButton() {
 		try {
 			const res = await fetch("/api/games", { method: "POST" });
 			if (!res.ok) throw new Error("Failed to create game");
-			const data = await res.json();
+			const data = (await res.json()) as { gameId: string };
 			router.push(`/online/${data.gameId}?displayName=${encodeURIComponent(name.trim())}`);
-		} catch (e: any) {
-			setError(e?.message ?? "Failed to create game");
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : "Failed to create game";
+			setError(msg);
 			setLoading(false);
 		}
 	}
