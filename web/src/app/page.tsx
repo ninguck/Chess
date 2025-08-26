@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import StartOnlineButton from "./StartOnlineButton";
 
 export default function Home() {
 	return (
@@ -22,13 +23,13 @@ export default function Home() {
 								</div>
 							</Link>
 
-							<div className="rounded-lg border border-gray-200 dark:border-gray-800 p-5 opacity-60">
+							<div className="rounded-lg border border-gray-200 dark:border-gray-800 p-5">
 								<div className="flex items-center justify-between">
 									<div className="flex flex-col">
 										<h2 className="text-xl font-medium">Online game</h2>
-										<p className="text-sm text-slate-600 dark:text-slate-400">Coming soon: create or join via link.</p>
+										<p className="text-sm text-slate-600 dark:text-slate-400">Create a game and share the link.</p>
 									</div>
-									<span className="text-sm">Soon</span>
+									<StartOnlineButton />
 								</div>
 							</div>
 						</section>

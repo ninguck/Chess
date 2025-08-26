@@ -1,0 +1,33 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function StartOnlineButton() {
+	const router = useRouter();
+	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	async function onClick() {
+		setLoading(true);
+		setError(null);
+		try {
+			const res = await fetch("/api/games", { method: "POST" });
+			if (!res.ok) throw new Error("Failed to create game");
+			const data = await res.json();
+			router.push(`/online/${data.gameId}`);
+		} catch (e: any) {
+			setError(e?.message ?? "Failed to create game");
+			setLoading(false);
+		}
+	}
+
+	return (
+		<div className="flex items-center gap-3">
+			<button onClick={onClick} disabled={loading} className="px-4 py-2 rounded bg-black text-white hover:opacity-90 disabled:opacity-60">
+				{loading ? "Creating…" : "Create online game"}
+			</button>
+			{error ? <span className="text-sm text-red-500">{error}</span> : null}
+		</div>
+	);
+}
