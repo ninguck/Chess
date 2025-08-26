@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import type { Square } from "chess.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,19 @@ async function postMove(id: string, body: any) {
 	return res;
 }
 
+function getPlayerToken(): string {
+	try {
+		const key = `chess.playerToken`;
+		const existing = localStorage.getItem(key);
+		if (existing) return existing;
+		const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+		localStorage.setItem(key, token);
+		return token;
+	} catch {
+		return Math.random().toString(36).slice(2);
+	}
+}
+
 export default function OnlineGamePage({ params }: { params: Promise<{ id: string }> }) {
 	const { id: gameId } = use(params);
 	const seat = (typeof window !== "undefined" ? localStorage.getItem(`chess.seat.${gameId}`) : null) as ("w" | "b" | null);
@@ -38,37 +51,31 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 	const [orientation, setOrientation] = useState<"white" | "black">(seat === "b" ? "black" : "white");
 	const etagRef = useRef<string | null>(null);
 	const pollingRef = useRef<number | null>(null);
+	const playerTokenRef = useRef<string>(getPlayerToken());
+
+	const canDrag = useMemo(() => {
+		if (!state || !seat) return false;
+		return state.turn === seat;
+	}, [state, seat]);
 
 	const load = useCallback(async () => {
 		const { state: s, etag, status } = await fetchState(gameId, etagRef);
-		if (status === 404) {
-			setError("Game not found");
-			return;
-		}
-		if (status === 200 && s) {
-			setState(s);
-			if (etag) etagRef.current = etag;
-		}
+		if (status === 404) { setError("Game not found"); return; }
+		if (status === 200 && s) { setState(s); if (etag) etagRef.current = etag; }
 	}, [gameId]);
 
 	useEffect(() => {
 		load();
-		function tick() { load(); }
-		const id = window.setInterval(tick, 1500);
+		const id = window.setInterval(() => load(), 1500);
 		pollingRef.current = id;
 		return () => { if (pollingRef.current) window.clearInterval(pollingRef.current); };
 	}, [load]);
 
 	const onDrop = useCallback(async (from: Square, to: Square) => {
 		if (!state) return false;
-		const res = await postMove(gameId, { expectedVersion: state.version, from, to });
-		if (res.status === 200) {
-			await load();
-			return true;
-		}
-		if (res.status === 409) {
-			await load();
-		}
+		const res = await postMove(gameId, { expectedVersion: state.version, from, to, playerToken: playerTokenRef.current });
+		if (res.status === 200) { await load(); return true; }
+		if (res.status === 409) { await load(); }
 		return false;
 	}, [gameId, state, load]);
 
@@ -90,12 +97,13 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 											id: "online-board",
 											position: state.fen,
 											boardOrientation: orientation,
-											allowDragging: true,
+											allowDragging: canDrag,
 											onPieceDrop: ({ sourceSquare, targetSquare }) => onDrop(sourceSquare as Square, targetSquare as Square),
 										}}
 									/>
 								</div>
 								<aside className="flex flex-col gap-3">
+									<div className="text-sm">You are: {seat === 'w' ? 'White' : seat === 'b' ? 'Black' : 'Spectator'}</div>
 									<div className="text-sm">Turn: {state.turn === "w" ? "White" : "Black"} • Version: {state.version}</div>
 									<div className="text-sm">Game ID: {state.gameId}</div>
 								</aside>

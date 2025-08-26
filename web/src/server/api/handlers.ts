@@ -1,7 +1,9 @@
 import { z } from "zod";
-import { InMemoryGameStore, type GameStore } from "../GameStore";
+import type { GameStore } from "../GameStore";
 import { GameService } from "../GameService";
 import { sharedStore } from "./store";
+import { RedisGameStore } from "../RedisGameStore";
+import { InMemorySeatStore, RedisSeatStore, type SeatStore } from "../SeatStore";
 
 export type CreateResult = { status: 201; body: any };
 export type GetResult = { status: 200; body: any; etag: string } | { status: 304 } | { status: 404 };
@@ -12,6 +14,7 @@ export const MoveSchema = z.object({
 	to: z.string().min(2).max(2),
 	promotion: z.enum(["q", "r", "b", "n"]).optional(),
 	expectedVersion: z.number().int().nonnegative(),
+	playerToken: z.string().min(8),
 });
 
 export function generateId(length = 8): string {
@@ -21,8 +24,22 @@ export function generateId(length = 8): string {
 	return id;
 }
 
+function resolveGameStore(): GameStore {
+	const url = process.env.UPSTASH_REDIS_REST_URL;
+	const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+	if (url && token) return new RedisGameStore(url, token);
+	return sharedStore;
+}
+
+function resolveSeatStore(): SeatStore {
+	const url = process.env.UPSTASH_REDIS_REST_URL;
+	const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+	if (url && token) return new RedisSeatStore(url, token);
+	return new InMemorySeatStore();
+}
+
 export function makeServices(store?: GameStore) {
-	const s = store ?? sharedStore; // use shared store by default
+	const s = store ?? resolveGameStore();
 	const service = new GameService(s);
 	return { store: s, service };
 }
@@ -52,10 +69,24 @@ export async function handleGet(gameId: string, ifNoneMatch?: string, store?: Ga
 export async function handleMove(gameId: string, body: unknown, store?: GameStore) {
 	const parse = MoveSchema.safeParse(body);
 	if (!parse.success) return { status: 400, body: { error: "invalid_payload" } } as const;
-	const { expectedVersion, from, to, promotion } = parse.data;
+	const { expectedVersion, from, to, promotion, playerToken } = parse.data;
 	const { service } = makeServices(store);
-	const before = await service.get(gameId);
-	if (!before) return { status: 404 } as const;
+	const game = await service.get(gameId);
+	if (!game) return { status: 404 } as const;
+
+	// Seat enforcement
+	const seatStore = resolveSeatStore();
+	const seats = await seatStore.getSeats(gameId);
+	// Bind if needed
+	if (!seats.w) { await seatStore.setSeat(gameId, 'w', playerToken); seats.w = playerToken; }
+	else if (seats.w && seats.w !== playerToken && !seats.b) { await seatStore.setSeat(gameId, 'b', playerToken); seats.b = playerToken; }
+	// Determine required token by turn
+	const required = game.turn === 'w' ? seats.w : seats.b;
+	if (required && required !== playerToken) {
+		return { status: 400, body: { error: "wrong_seat", gameId, ...game } } as const;
+	}
+
+	const before = game;
 	const after = await service.makeMove(gameId, expectedVersion, from, to, promotion);
 	if (!after) return { status: 404 } as const;
 	if (after.version === before.version) {
