@@ -11,11 +11,7 @@ export default function JoinByCode() {
 	function onSubmit(e: React.FormEvent) {
 		e.preventDefault();
 		const trimmed = code.trim();
-		if (!trimmed) {
-			setError("Enter a game code");
-			return;
-		}
-		try { localStorage.setItem(`chess.seat.${trimmed}`, "b"); } catch {}
+		if (!trimmed) { setError("Enter a game code"); return; }
 		router.push(`/online/${trimmed}`);
 	}
 

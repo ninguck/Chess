@@ -4,7 +4,8 @@ import { handleGet } from "@/server/api/handlers";
 export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
 	const { id } = await context.params;
 	const ifNoneMatch = _req.headers.get("if-none-match") ?? undefined;
-	const result = await handleGet(id, ifNoneMatch);
+	const playerToken = _req.nextUrl.searchParams.get("playerToken") ?? undefined;
+	const result = await handleGet(id, ifNoneMatch, playerToken);
 	if (result.status === 304) {
 		return new NextResponse(null, { status: 304 });
 	}

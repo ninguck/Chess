@@ -15,7 +15,6 @@ export default function StartOnlineButton() {
 			const res = await fetch("/api/games", { method: "POST" });
 			if (!res.ok) throw new Error("Failed to create game");
 			const data = await res.json();
-			try { localStorage.setItem(`chess.seat.${data.gameId}`, "w"); } catch {}
 			router.push(`/online/${data.gameId}`);
 		} catch (e: any) {
 			setError(e?.message ?? "Failed to create game");

@@ -55,7 +55,7 @@ export async function handleCreate(store?: GameStore) {
 	return { status: 201, body: { gameId, ...created } } as const;
 }
 
-export async function handleGet(gameId: string, ifNoneMatch?: string, store?: GameStore) {
+export async function handleGet(gameId: string, ifNoneMatch?: string, playerToken?: string, store?: GameStore) {
 	const { service } = makeServices(store);
 	const current = await service.get(gameId);
 	if (!current) return { status: 404 } as const;
@@ -63,7 +63,14 @@ export async function handleGet(gameId: string, ifNoneMatch?: string, store?: Ga
 	if (ifNoneMatch && ifNoneMatch === etag) {
 		return { status: 304 } as const;
 	}
-	return { status: 200, body: { gameId, ...current }, etag } as const;
+	const seatStore = resolveSeatStore();
+	const seats = await seatStore.getSeats(gameId);
+	let seat: 'w' | 'b' | undefined = undefined;
+	if (playerToken) {
+		seat = seats.w === playerToken ? 'w' : seats.b === playerToken ? 'b' : undefined;
+	}
+	const seatsAssigned = Boolean(seats.w || seats.b);
+	return { status: 200, body: { gameId, ...current, seat, seatsAssigned }, etag } as const;
 }
 
 export async function handleMove(gameId: string, body: unknown, store?: GameStore) {
