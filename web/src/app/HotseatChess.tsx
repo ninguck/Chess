@@ -15,6 +15,123 @@ function getStatus(chess: Chess) {
 	return { label: "Playing", type: "playing" as const };
 }
 
+// Helpers for square arithmetic
+const files = ["a","b","c","d","e","f","g","h"] as const;
+function toCoord(sq: Square) {
+	const file = files.indexOf(sq[0] as typeof files[number]);
+	const rank = Number(sq[1]) - 1; // 0..7
+	return { file, rank };
+}
+function toSquare(file: number, rank: number): Square | null {
+	if (file < 0 || file > 7 || rank < 0 || rank > 7) return null;
+	return `${files[file]}${rank + 1}` as Square;
+}
+function sign(n: number) {
+	return n === 0 ? 0 : n > 0 ? 1 : -1;
+}
+
+// Compute path squares between from and to depending on piece type
+function computePathSquares(piece: string, from: Square, to: Square): Square[] {
+	const a = toCoord(from);
+	const b = toCoord(to);
+	const dx = b.file - a.file;
+	const dy = b.rank - a.rank;
+	const path: Square[] = [];
+
+	switch (piece) {
+		case "n": { // knight
+			// Highlight the "L": two in primary axis then one perpendicular
+			if (Math.abs(dx) === 1 && Math.abs(dy) === 2) {
+				const v = sign(dy);
+				const h = sign(dx);
+				const s1 = toSquare(a.file, a.rank + v);
+				const s2 = toSquare(a.file, a.rank + 2 * v);
+				if (s1) path.push(s1);
+				if (s2) path.push(s2);
+				const s3 = toSquare(a.file + h, a.rank + 2 * v);
+				if (s3) path.push(s3);
+			} else if (Math.abs(dx) === 2 && Math.abs(dy) === 1) {
+				const h = sign(dx);
+				const v = sign(dy);
+				const s1 = toSquare(a.file + h, a.rank);
+				const s2 = toSquare(a.file + 2 * h, a.rank);
+				if (s1) path.push(s1);
+				if (s2) path.push(s2);
+				const s3 = toSquare(a.file + 2 * h, a.rank + v);
+				if (s3) path.push(s3);
+			}
+			break;
+		}
+		case "b": {
+			const ux = sign(dx);
+			const uy = sign(dy);
+			let f = a.file + ux, r = a.rank + uy;
+			while (f !== b.file && r !== b.rank) {
+				const s = toSquare(f, r);
+				if (s) path.push(s);
+				f += ux; r += uy;
+			}
+			const target = toSquare(b.file, b.rank); if (target) path.push(target);
+			break;
+		}
+		case "r": {
+			const ux = sign(dx);
+			const uy = sign(dy);
+			let f = a.file + ux, r = a.rank + uy;
+			while (f !== b.file || r !== b.rank) {
+				const s = toSquare(f, r);
+				if (s) path.push(s);
+				f += ux; r += uy;
+				if ((ux !== 0 && uy !== 0)) break; // safety
+			}
+			const target = toSquare(b.file, b.rank); if (target) path.push(target);
+			break;
+		}
+		case "q": {
+			const ux = sign(dx);
+			const uy = sign(dy);
+			let f = a.file + ux, r = a.rank + uy;
+			while (f !== b.file || r !== b.rank) {
+				const s = toSquare(f, r);
+				if (s) path.push(s);
+				f += ux; r += uy;
+			}
+			const target = toSquare(b.file, b.rank); if (target) path.push(target);
+			break;
+		}
+		case "p": {
+			// forward 1/2 or capture 1 diagonal: highlight target and any intermediate forward
+			const ux = sign(dx); // -1,0,1
+			const uy = sign(dy);
+			if (ux === 0) {
+				let r = a.rank + uy;
+				while (r !== b.rank + uy) {
+					const s = toSquare(a.file, r);
+					if (s) path.push(s);
+					r += uy;
+				}
+			} else {
+				const target = toSquare(b.file, b.rank); if (target) path.push(target);
+			}
+			break;
+		}
+		case "k": {
+			const target = toSquare(b.file, b.rank); if (target) path.push(target);
+			break;
+		}
+	}
+	return path;
+}
+
+function formatMove(m: any) {
+	const map: Record<string, string> = { p: "P", n: "N", b: "B", r: "R", q: "Q", k: "K" };
+	const piece = map[m.piece] ?? m.piece.toUpperCase();
+	const arrow = m.captured ? " x " : " → ";
+	const promo = m.promotion ? `=${m.promotion.toUpperCase()}` : "";
+	const check = m.san?.includes("#") ? " #" : m.san?.includes("+") ? " +" : "";
+	return `${piece} ${m.from}${arrow}${m.to}${promo}${check}`;
+}
+
 export default function HotseatChess() {
 	const [chess] = useState(() => new Chess());
 	const [fen, setFen] = useState<string>(chess.fen());
@@ -47,22 +164,18 @@ export default function HotseatChess() {
 
 	const onSquareClick = useCallback(
 		(square: Square) => {
-			// If a piece is already selected and we clicked a legal target, try the move
 			if (selectedSquare && legalTargets.includes(square)) {
 				const moved = onDrop(selectedSquare, square);
 				if (!moved) {
-					// If illegal (race condition), just clear selection
 					setSelectedSquare(null);
 					setLegalTargets([]);
 				}
 				return;
 			}
-
-			// Select only if it's the current player's piece
 			const piece = chess.get(square);
 			if (piece && piece.color === chess.turn()) {
 				setSelectedSquare(square);
-				const moves = chess.moves({ square, verbose: true }) as unknown as Array<{ to: Square }>; // chess.js typing
+				const moves = chess.moves({ square, verbose: true }) as unknown as Array<{ to: Square; piece: string }>;
 				setLegalTargets(moves.map((m) => m.to));
 			} else {
 				setSelectedSquare(null);
@@ -94,34 +207,54 @@ export default function HotseatChess() {
 			? "bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-200"
 			: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200";
 
-	const verboseMoves = chess.history({ verbose: true });
+	const verboseMoves = chess.history({ verbose: true }) as any[];
 	const movePairs = [] as { index: number; white?: string; black?: string }[];
 	for (let i = 0; i < verboseMoves.length; i += 2) {
 		movePairs.push({
 			index: Math.floor(i / 2) + 1,
-			white: verboseMoves[i]?.san,
-			black: verboseMoves[i + 1]?.san,
+			white: verboseMoves[i] ? formatMove(verboseMoves[i]) : undefined,
+			black: verboseMoves[i + 1] ? formatMove(verboseMoves[i + 1]) : undefined,
 		});
 	}
 
-	// Styles: last move + selection + legal targets
-	const squareStyles: Record<string, React.CSSProperties> = {};
-	if (lastMove) {
-		squareStyles[lastMove.from] = { outline: "3px solid #f59e0b", outlineOffset: -3 };
-		squareStyles[lastMove.to] = { outline: "3px solid #f59e0b", outlineOffset: -3 };
-	}
+	// Build path highlight squares from selected piece across all legal targets
+	const pathHighlightSquares: Set<string> = new Set();
 	if (selectedSquare) {
-		squareStyles[selectedSquare] = { outline: "3px solid #3b82f6", outlineOffset: -3 };
-		for (const t of legalTargets) {
-			// Add a soft dot indicator via radial gradient
-			squareStyles[t] = {
-				...(squareStyles[t] || {}),
-				backgroundImage: "radial-gradient(circle at center, rgba(59,130,246,0.45) 0%, rgba(59,130,246,0.45) 18%, rgba(0,0,0,0) 19%)",
-				backgroundRepeat: "no-repeat",
-				backgroundPosition: "center",
-				backgroundSize: "22% 22%",
+		const moves = chess.moves({ square: selectedSquare, verbose: true }) as unknown as Array<{ to: Square; piece: string }>;
+		for (const m of moves) {
+			const path = computePathSquares(m.piece, selectedSquare, m.to);
+			for (const s of path) pathHighlightSquares.add(s);
+		}
+	}
+
+	// Styles: path highlights + selection + last move
+	const squareStyles: Record<string, React.CSSProperties> = {};
+	if (pathHighlightSquares.size > 0) {
+		for (const s of pathHighlightSquares) {
+			squareStyles[s] = {
+				boxShadow: "inset 0 0 0 9999px rgba(59,130,246,0.42), 0 0 0 3px rgba(59,130,246,0.55)",
+				animation: "pulse 1.2s ease-in-out infinite",
 			};
 		}
+	}
+	if (selectedSquare) {
+		squareStyles[selectedSquare] = {
+			...(squareStyles[selectedSquare] || {}),
+			outline: "3px solid #3b82f6",
+			outlineOffset: -3,
+		};
+	}
+	if (lastMove) {
+		squareStyles[lastMove.from] = {
+			...(squareStyles[lastMove.from] || {}),
+			outline: "3px solid #f59e0b",
+			outlineOffset: -3,
+		};
+		squareStyles[lastMove.to] = {
+			...(squareStyles[lastMove.to] || {}),
+			outline: "3px solid #f59e0b",
+			outlineOffset: -3,
+		};
 	}
 
 	return (
@@ -165,15 +298,31 @@ export default function HotseatChess() {
 				<aside className="flex flex-col gap-6">
 					<section className="rounded-lg border border-gray-200 dark:border-gray-800 p-4 bg-white/50 dark:bg-white/5">
 						<h2 className="font-medium mb-3">Game controls</h2>
-						<div className="flex flex-wrap items-center gap-3 text-sm">
-							<span className={`px-2 py-1 rounded ${statusClass}`}>{status.label}</span>
-							<span className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800">Turn: {chess.turn() === "w" ? "White" : "Black"}</span>
-							<label className="inline-flex items-center gap-2 select-none">
-								<input type="checkbox" className="accent-black" checked={autoFlip} onChange={() => setAutoFlip((v) => !v)} />
-								<span>Auto flip</span>
-							</label>
-							<button onClick={flipBoard} className="px-3 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">Flip</button>
-							<button onClick={resetGame} className="px-3 py-1 rounded bg-black text-white hover:opacity-90">Reset</button>
+						<div className="flex flex-col gap-3 text-sm">
+							{/* Row 1: status + current turn chip */}
+							<div className="flex flex-wrap items-center gap-2">
+								<span className={`px-2 py-1 rounded ${statusClass}`}>{status.label}</span>
+								{(() => {
+									const isWhite = chess.turn() === "w";
+									return (
+										<span className="px-2 py-1 rounded border border-gray-300 bg-gray-100 dark:bg-gray-800">
+											{isWhite ? "♔ White to move" : "♚ Black to move"}
+										</span>
+									);
+								})()}
+							</div>
+							{/* Row 2: flip + auto flip */}
+							<div className="flex flex-wrap items-center gap-2 pt-1">
+								<button onClick={flipBoard} className="px-4 py-2 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 w-full sm:w-auto">Flip board</button>
+								<label className="inline-flex items-center gap-2 select-none w-full sm:w-auto">
+									<input type="checkbox" className="accent-black" checked={autoFlip} onChange={() => setAutoFlip((v) => !v)} />
+									<span>Auto flip</span>
+								</label>
+							</div>
+							{/* Row 3: reset */}
+							<div className="pt-1">
+								<button onClick={resetGame} className="px-4 py-2 rounded bg-black text-white hover:opacity-90 w-full">Reset game</button>
+							</div>
 						</div>
 					</section>
 
