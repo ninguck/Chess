@@ -5,7 +5,8 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
 	const { id } = await context.params;
 	const ifNoneMatch = _req.headers.get("if-none-match") ?? undefined;
 	const playerToken = _req.nextUrl.searchParams.get("playerToken") ?? undefined;
-	const result = await handleGet(id, ifNoneMatch, playerToken);
+	const displayName = _req.nextUrl.searchParams.get("displayName") ?? undefined;
+	const result = await handleGet(id, ifNoneMatch, playerToken, undefined, displayName);
 	if (result.status === 304) {
 		return new NextResponse(null, { status: 304 });
 	}

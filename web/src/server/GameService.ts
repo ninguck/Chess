@@ -9,14 +9,12 @@ export class GameService {
 		return this.store.createGame(id, svc.getState());
 	}
 
-	async get(id: string): Promise<StoredGame | null> {
-		return this.store.getGame(id);
-	}
+	async get(id: string): Promise<StoredGame | null> { return this.store.getGame(id); }
 
 	async makeMove(id: string, expectedVersion: number, from: string, to: string, promotion?: "q" | "r" | "b" | "n"): Promise<StoredGame | null> {
 		const current = await this.store.getGame(id);
 		if (!current) return null;
-		if (current.version !== expectedVersion) return current; // caller should handle 409
+		if (current.version !== expectedVersion) return current;
 		const svc = ChessService.fromState(current);
 		const moved = svc.makeMove(from as any, to as any, promotion);
 		if (!moved) return current;

@@ -1,8 +1,10 @@
-export type Seats = { w?: string; b?: string };
+export type SeatEntry = { token: string; name: string };
+export type Seats = { w?: SeatEntry; b?: SeatEntry; spectators?: SeatEntry[] };
 
 export interface SeatStore {
 	getSeats(gameId: string): Promise<Seats>;
-	setSeat(gameId: string, color: 'w' | 'b', token: string): Promise<void>;
+	setSeat(gameId: string, color: 'w' | 'b', entry: SeatEntry): Promise<void>;
+	addSpectator(gameId: string, entry: SeatEntry): Promise<void>;
 }
 
 export class InMemorySeatStore implements SeatStore {
@@ -10,9 +12,16 @@ export class InMemorySeatStore implements SeatStore {
 	async getSeats(gameId: string): Promise<Seats> {
 		return this.map.get(gameId) ?? {};
 	}
-	async setSeat(gameId: string, color: 'w' | 'b', token: string): Promise<void> {
+	async setSeat(gameId: string, color: 'w' | 'b', entry: SeatEntry): Promise<void> {
 		const cur = this.map.get(gameId) ?? {};
-		cur[color] = token;
+		cur[color] = entry;
+		this.map.set(gameId, cur);
+	}
+	async addSpectator(gameId: string, entry: SeatEntry): Promise<void> {
+		const cur = this.map.get(gameId) ?? {};
+		const list = cur.spectators ?? [];
+		if (!list.find((e) => e.token === entry.token)) list.push(entry);
+		cur.spectators = list;
 		this.map.set(gameId, cur);
 	}
 }
@@ -39,10 +48,20 @@ export class RedisSeatStore implements SeatStore {
 		if (!value) return {};
 		try { return JSON.parse(value) as Seats; } catch { return {}; }
 	}
-	async setSeat(gameId: string, color: 'w' | 'b', token: string): Promise<void> {
-		const seats = await this.getSeats(gameId);
-		seats[color] = token;
+	async persist(gameId: string, seats: Seats): Promise<void> {
 		const val = encodeURIComponent(JSON.stringify(seats));
 		await upstashPath(`set/${this.key(gameId)}/${val}?EX=${this.ttlSeconds}`, this.url, this.token, "POST");
+	}
+	async setSeat(gameId: string, color: 'w' | 'b', entry: SeatEntry): Promise<void> {
+		const cur = await this.getSeats(gameId);
+		cur[color] = entry;
+		await this.persist(gameId, cur);
+	}
+	async addSpectator(gameId: string, entry: SeatEntry): Promise<void> {
+		const cur = await this.getSeats(gameId);
+		const list = cur.spectators ?? [];
+		if (!list.find((e) => e.token === entry.token)) list.push(entry);
+		cur.spectators = list;
+		await this.persist(gameId, cur);
 	}
 }

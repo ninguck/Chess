@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+function getDisplayName(): string | null { try { return localStorage.getItem("chess.displayName"); } catch { return null; } }
+
 export default function JoinByCode() {
 	const router = useRouter();
 	const [code, setCode] = useState("");
@@ -12,7 +14,9 @@ export default function JoinByCode() {
 		e.preventDefault();
 		const trimmed = code.trim();
 		if (!trimmed) { setError("Enter a game code"); return; }
-		router.push(`/online/${trimmed}`);
+		const name = getDisplayName();
+		if (!name || name.trim().length < 2) { setError("Please enter your name above first."); return; }
+		router.push(`/online/${trimmed}?displayName=${encodeURIComponent(name.trim())}`);
 	}
 
 	return (

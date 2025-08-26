@@ -3,19 +3,28 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+function getDisplayName(): string | null {
+	try { return localStorage.getItem("chess.displayName"); } catch { return null; }
+}
+
 export default function StartOnlineButton() {
 	const router = useRouter();
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	async function onClick() {
+		const name = getDisplayName();
+		if (!name || name.trim().length < 2) {
+			setError("Please enter your name above first.");
+			return;
+		}
 		setLoading(true);
 		setError(null);
 		try {
 			const res = await fetch("/api/games", { method: "POST" });
 			if (!res.ok) throw new Error("Failed to create game");
 			const data = await res.json();
-			router.push(`/online/${data.gameId}`);
+			router.push(`/online/${data.gameId}?displayName=${encodeURIComponent(name.trim())}`);
 		} catch (e: any) {
 			setError(e?.message ?? "Failed to create game");
 			setLoading(false);

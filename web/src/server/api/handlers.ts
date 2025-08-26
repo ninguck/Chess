@@ -3,11 +3,13 @@ import type { GameStore } from "../GameStore";
 import { GameService } from "../GameService";
 import { sharedStore } from "./store";
 import { RedisGameStore } from "../RedisGameStore";
-import { InMemorySeatStore, RedisSeatStore, type SeatStore } from "../SeatStore";
+import { InMemorySeatStore, RedisSeatStore, type SeatStore, type Seats } from "../SeatStore";
 
 export type CreateResult = { status: 201; body: any };
 export type GetResult = { status: 200; body: any; etag: string } | { status: 304 } | { status: 404 };
 export type MoveResult = { status: 200; body: any } | { status: 400; body: any } | { status: 404 } | { status: 409; body: any };
+
+const NameSchema = z.string().trim().min(2).max(20).regex(/^[\w \-]+$/);
 
 export const MoveSchema = z.object({
 	from: z.string().min(2).max(2),
@@ -15,6 +17,7 @@ export const MoveSchema = z.object({
 	promotion: z.enum(["q", "r", "b", "n"]).optional(),
 	expectedVersion: z.number().int().nonnegative(),
 	playerToken: z.string().min(8),
+	displayName: NameSchema.optional(),
 });
 
 export function generateId(length = 8): string {
@@ -44,8 +47,8 @@ export function makeServices(store?: GameStore) {
 	return { store: s, service };
 }
 
-function makeEtag(version: number): string {
-	return `W/"v-${version}"`;
+function makeEtag(version: number, seatHash: string = ""): string {
+	return `W/"v-${version}-s-${seatHash}"`;
 }
 
 export async function handleCreate(store?: GameStore) {
@@ -55,22 +58,30 @@ export async function handleCreate(store?: GameStore) {
 	return { status: 201, body: { gameId, ...created } } as const;
 }
 
-export async function handleGet(gameId: string, ifNoneMatch?: string, playerToken?: string, store?: GameStore) {
+export async function handleGet(gameId: string, ifNoneMatch?: string, playerToken?: string, store?: GameStore, displayName?: string) {
 	const { service } = makeServices(store);
 	const current = await service.get(gameId);
 	if (!current) return { status: 404 } as const;
-	const etag = makeEtag(current.version);
-	if (ifNoneMatch && ifNoneMatch === etag) {
-		return { status: 304 } as const;
-	}
 	const seatStore = resolveSeatStore();
 	const seats = await seatStore.getSeats(gameId);
 	let seat: 'w' | 'b' | undefined = undefined;
 	if (playerToken) {
-		seat = seats.w === playerToken ? 'w' : seats.b === playerToken ? 'b' : undefined;
+		const name = displayName && NameSchema.safeParse(displayName).success ? displayName : `Player-${playerToken.slice(0,4)}`;
+		if (!seats.w) { await seatStore.setSeat(gameId, 'w', { token: playerToken, name }); seats.w = { token: playerToken, name }; seat = 'w'; }
+		else if (seats.w.token !== playerToken && !seats.b) { await seatStore.setSeat(gameId, 'b', { token: playerToken, name }); seats.b = { token: playerToken, name }; seat = 'b'; }
+		else if (seats.w.token === playerToken) { seat = 'w'; }
+		else if (seats.b && seats.b.token === playerToken) { seat = 'b'; }
+		else { await seatStore.addSpectator(gameId, { token: playerToken, name }); (seats.spectators ??= []).push({ token: playerToken, name }); }
 	}
 	const seatsAssigned = Boolean(seats.w || seats.b);
-	return { status: 200, body: { gameId, ...current, seat, seatsAssigned }, etag } as const;
+	const seatHash = `${seats.w?.token ?? ''}:${seats.b?.token ?? ''}:${(seats.spectators ?? []).length}`;
+	const etag = makeEtag(current.version, seatHash);
+	if (ifNoneMatch && ifNoneMatch === etag) {
+		return { status: 304 } as const;
+	}
+	const publicSeats = { w: seats.w ? { name: seats.w.name } : undefined, b: seats.b ? { name: seats.b.name } : undefined } as { w?: { name: string }, b?: { name: string } };
+	const spectators = (seats.spectators ?? []).map((s) => ({ name: s.name })).slice(0, 20);
+	return { status: 200, body: { gameId, ...current, seat, seatsAssigned, seats: publicSeats, spectators }, etag } as const;
 }
 
 export async function handleMove(gameId: string, body: unknown, store?: GameStore) {
@@ -80,19 +91,16 @@ export async function handleMove(gameId: string, body: unknown, store?: GameStor
 	const { service } = makeServices(store);
 	const game = await service.get(gameId);
 	if (!game) return { status: 404 } as const;
-
-	// Seat enforcement
 	const seatStore = resolveSeatStore();
 	const seats = await seatStore.getSeats(gameId);
-	// Bind if needed
-	if (!seats.w) { await seatStore.setSeat(gameId, 'w', playerToken); seats.w = playerToken; }
-	else if (seats.w && seats.w !== playerToken && !seats.b) { await seatStore.setSeat(gameId, 'b', playerToken); seats.b = playerToken; }
-	// Determine required token by turn
-	const required = game.turn === 'w' ? seats.w : seats.b;
+	if (!seats.w || (seats.w && seats.w.token !== playerToken && !seats.b)) {
+		if (!seats.w) { await seatStore.setSeat(gameId, 'w', { token: playerToken, name: `Player-${playerToken.slice(0,4)}` }); seats.w = { token: playerToken, name: `Player-${playerToken.slice(0,4)}` }; }
+		else if (seats.w.token !== playerToken && !seats.b) { await seatStore.setSeat(gameId, 'b', { token: playerToken, name: `Player-${playerToken.slice(0,4)}` }); seats.b = { token: playerToken, name: `Player-${playerToken.slice(0,4)}` }; }
+	}
+	const required = game.turn === 'w' ? seats.w?.token : seats.b?.token;
 	if (required && required !== playerToken) {
 		return { status: 400, body: { error: "wrong_seat", gameId, ...game } } as const;
 	}
-
 	const before = game;
 	const after = await service.makeMove(gameId, expectedVersion, from, to, promotion);
 	if (!after) return { status: 404 } as const;
