@@ -1,20 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleGet } from "@/server/api/handlers";
 
+export const runtime = 'nodejs';
+
 export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
-	const { id } = await context.params;
-	const ifNoneMatch = _req.headers.get("if-none-match") ?? undefined;
-	const playerToken = _req.nextUrl.searchParams.get("playerToken") ?? undefined;
-	const displayName = _req.nextUrl.searchParams.get("displayName") ?? undefined;
-	const result = await handleGet(id, ifNoneMatch, playerToken, undefined, displayName);
-	if (result.status === 304) {
-		return new NextResponse(null, { status: 304 });
+	try {
+		const { id } = await context.params;
+		const ifNoneMatch = _req.headers.get("if-none-match") ?? undefined;
+		const playerToken = _req.nextUrl.searchParams.get("playerToken") ?? undefined;
+		const displayName = _req.nextUrl.searchParams.get("displayName") ?? undefined;
+		const result = await handleGet(id, ifNoneMatch, playerToken, undefined, displayName);
+		if (result.status === 304) {
+			return new NextResponse(null, { status: 304 });
+		}
+		if (result.status === 404) {
+			return NextResponse.json({ error: "not_found" }, { status: 404 });
+		}
+		return new NextResponse(JSON.stringify(result.body), {
+			status: 200,
+			headers: result.etag ? { ETag: result.etag, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
+		});
+	} catch (e: unknown) {
+		console.error(`/api/games/[id] get error`, e);
+		const message = e instanceof Error ? e.message : "Unknown error";
+		return NextResponse.json({ error: "internal_error", message }, { status: 500 });
 	}
-	if (result.status === 404) {
-		return NextResponse.json({ error: "not_found" }, { status: 404 });
-	}
-	return new NextResponse(JSON.stringify(result.body), {
-		status: 200,
-		headers: result.etag ? { ETag: result.etag, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
-	});
 }

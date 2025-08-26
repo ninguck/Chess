@@ -27,7 +27,7 @@ export class InMemorySeatStore implements SeatStore {
 }
 
 // Reuse the path-based Upstash helper by local import to avoid cycles
-async function upstashPath(path: string, url: string, token: string, method: "GET" | "POST" = "POST"): Promise<unknown> {
+async function upstashPath(path: string, url: string, token: string, method: "GET" | "POST" = "GET"): Promise<unknown> {
 	const res = await fetch(`${url.replace(/\/$/, "")}/${path.replace(/^\//, "")}`, {
 		method,
 		headers: { Authorization: `Bearer ${token}` },
@@ -43,14 +43,14 @@ export class RedisSeatStore implements SeatStore {
 	constructor(private readonly url: string, private readonly token: string, private readonly ttlSeconds: number = 60 * 60 * 24) {}
 	private key(gameId: string) { return `seats:${gameId}`; }
 	async getSeats(gameId: string): Promise<Seats> {
-		const json = await upstashPath(`get/${this.key(gameId)}`, this.url, this.token, "POST");
+		const json = await upstashPath(`get/${this.key(gameId)}`, this.url, this.token, "GET");
 		const value = (json as { result?: string | null })?.result ?? null;
 		if (!value) return {};
 		try { return JSON.parse(value) as Seats; } catch { return {}; }
 	}
 	async persist(gameId: string, seats: Seats): Promise<void> {
 		const val = encodeURIComponent(JSON.stringify(seats));
-		await upstashPath(`set/${this.key(gameId)}/${val}?EX=${this.ttlSeconds}`, this.url, this.token, "POST");
+		await upstashPath(`set/${this.key(gameId)}/${val}?EX=${this.ttlSeconds}`, this.url, this.token, "GET");
 	}
 	async setSeat(gameId: string, color: 'w' | 'b', entry: SeatEntry): Promise<void> {
 		const cur = await this.getSeats(gameId);

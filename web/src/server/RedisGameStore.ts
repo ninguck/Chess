@@ -1,7 +1,7 @@
 import type { GameStore, StoredGame } from "./GameStore";
 import type { GameState } from "@/lib/ChessService";
 
-async function upstashPath(path: string, url: string, token: string, method: "GET" | "POST" = "POST"): Promise<unknown> {
+async function upstashPath(path: string, url: string, token: string, method: "GET" | "POST" = "GET"): Promise<unknown> {
 	const res = await fetch(`${url.replace(/\/$/, "")}/${path.replace(/^\//, "")}`, {
 		method,
 		headers: {
@@ -27,13 +27,13 @@ export class RedisGameStore implements GameStore {
 		if (exists) return exists;
 		const stored: StoredGame = { id, ...initial, updatedAt: Date.now() };
 		const value = encodeURIComponent(JSON.stringify(stored));
-		await upstashPath(`set/${key}/${value}?EX=${this.ttlSeconds}`, this.url, this.token, "POST");
+		await upstashPath(`set/${key}/${value}?EX=${this.ttlSeconds}`, this.url, this.token, "GET");
 		return stored;
 	}
 
 	async getGame(id: string): Promise<StoredGame | null> {
 		const key = gameKey(id);
-		const json = await upstashPath(`get/${key}`, this.url, this.token, "POST");
+		const json = await upstashPath(`get/${key}`, this.url, this.token, "GET");
 		const value = (json as { result?: string | null })?.result ?? null;
 		if (!value) return null;
 		try {
@@ -49,7 +49,7 @@ export class RedisGameStore implements GameStore {
 		const key = gameKey(id);
 		const stored: StoredGame = { id, ...state, updatedAt: Date.now() };
 		const value = encodeURIComponent(JSON.stringify(stored));
-		await upstashPath(`set/${key}/${value}?EX=${this.ttlSeconds}`, this.url, this.token, "POST");
+		await upstashPath(`set/${key}/${value}?EX=${this.ttlSeconds}`, this.url, this.token, "GET");
 		return stored;
 	}
 }
