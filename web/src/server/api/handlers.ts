@@ -71,7 +71,11 @@ export async function handleGet(gameId: string, ifNoneMatch?: string, playerToke
 		else if (seats.w.token !== playerToken && !seats.b) { await seatStore.setSeat(gameId, 'b', { token: playerToken, name }); seats.b = { token: playerToken, name }; seat = 'b'; }
 		else if (seats.w.token === playerToken) { seat = 'w'; }
 		else if (seats.b && seats.b.token === playerToken) { seat = 'b'; }
-		else { await seatStore.addSpectator(gameId, { token: playerToken, name }); (seats.spectators ??= []).push({ token: playerToken, name }); }
+		else {
+			await seatStore.addSpectator(gameId, { token: playerToken, name });
+			const refreshed = await seatStore.getSeats(gameId);
+			seats.spectators = refreshed.spectators;
+		}
 	}
 	const seatsAssigned = Boolean(seats.w || seats.b);
 	const seatHash = `${seats.w?.token ?? ''}:${seats.b?.token ?? ''}:${(seats.spectators ?? []).length}`;

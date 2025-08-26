@@ -16,7 +16,7 @@ type ServerState = {
 	seatsAssigned?: boolean;
 	seats?: { w?: { name: string }, b?: { name: string } };
 	spectators?: { name: string }[];
-	moves?: { from: Square; to: Square }[];
+	moves?: { from: Square; to: Square; promotion?: "q" | "r" | "b" | "n"; piece?: string; color?: "w" | "b"; san?: string }[];
 };
 
 // Helpers for square arithmetic & path highlights (matching local)
@@ -303,11 +303,24 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 									{/* Move list */}
 									<div className="text-sm">
 										<h3 className="font-medium mb-1">Moves</h3>
-										<ol className="space-y-1 max-h-[280px] overflow-auto pr-1 font-mono">
-											{(state.moves ?? []).map((m, idx) => (
-												<li key={idx}>{Math.floor(idx/2)+1}. {m.from}-{m.to}</li>
-											))}
-										</ol>
+										<div className="grid grid-cols-2 gap-4 max-h-[280px] overflow-auto pr-1 font-mono">
+											<div>
+												<div className="font-semibold mb-1">White</div>
+												<ol className="space-y-1">
+													{(state.moves ?? []).filter((_, i) => i % 2 === 0).map((m, idx) => (
+														<li key={`w-${idx}`}>{idx+1}. {(m.piece ?? '').toUpperCase() || '?'} {m.from} → {m.to}</li>
+													))}
+												</ol>
+											</div>
+											<div>
+												<div className="font-semibold mb-1">Black</div>
+												<ol className="space-y-1">
+													{(state.moves ?? []).filter((_, i) => i % 2 === 1).map((m, idx) => (
+														<li key={`b-${idx}`}>{idx+1}. {(m.piece ?? '').toUpperCase() || '?'} {m.from} → {m.to}</li>
+													))}
+												</ol>
+											</div>
+										</div>
 									</div>
 								</aside>
 							</div>

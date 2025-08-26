@@ -1,6 +1,6 @@
 import { Chess, Move, Square } from "chess.js";
 
-export type MoveBasic = { from: Square; to: Square; promotion?: "q" | "r" | "b" | "n" };
+export type MoveBasic = { from: Square; to: Square; promotion?: "q" | "r" | "b" | "n"; piece?: string; color?: "w" | "b"; san?: string };
 
 export type GameState = {
 	fen: string;
@@ -50,7 +50,7 @@ export class ChessService {
 			const res = this.chess.move({ from, to, promotion }) as Move | null;
 			if (res) {
 				this.version += 1;
-				this.moves.push({ from, to, promotion });
+				this.moves.push({ from, to, promotion, piece: res.piece, color: res.color as "w" | "b", san: res.san });
 			}
 			return res;
 		} catch {
