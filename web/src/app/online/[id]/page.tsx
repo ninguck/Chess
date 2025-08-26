@@ -156,11 +156,12 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 	const [error, setError] = useState<string | null>(null);
 	const playerTokenRef = useRef<string>(getPlayerToken());
 	const displayName = getDisplayName();
-	const [orientation] = useState<"white" | "black">("white");
+	const [orientation, setOrientation] = useState<"white" | "black">("white");
 	const etagRef = useRef<string | null>(null);
 	const pollingRef = useRef<number | null>(null);
 	const prevFenRef = useRef<string | null>(null);
 	const prevVersionRef = useRef<number | null>(null);
+	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
 	// Selection + highlights
 	const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
@@ -184,6 +185,9 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 				const diff = diffLastMove(prevFenRef.current, s.fen, mover);
 				setLastMove(diff);
 			}
+			// Auto-orient based on seat assignment
+			if (s.seat === 'w' && orientation !== 'white') setOrientation('white');
+			if (s.seat === 'b' && orientation !== 'black') setOrientation('black');
 			// Reconstruct a Chess instance to derive PGN/move list
 			try {
 				const ch = new Chess();
@@ -196,7 +200,7 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 			prevFenRef.current = s.fen; prevVersionRef.current = s.version;
 			setState(s); if (etag) etagRef.current = etag;
 		}
-	}, [gameId, displayName, lastMove]);
+	}, [gameId, displayName, lastMove, orientation]);
 
 	useEffect(() => {
 		load();
@@ -210,6 +214,15 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 		const res = await postMove(gameId, { expectedVersion: state.version, from, to, playerToken: playerTokenRef.current, displayName });
 		if (res.status === 200) { await load(); return true; }
 		if (res.status === 409) { await load(); }
+		if (res.status === 400) {
+			try {
+				const data = await res.json();
+				if (data?.error === 'illegal_move') setErrorMsg('Illegal move');
+				else if (data?.error === 'wrong_seat') setErrorMsg('Not your turn');
+				else setErrorMsg('Move rejected');
+			} catch { setErrorMsg('Move rejected'); }
+			window.setTimeout(() => setErrorMsg(null), 2000);
+		}
 		return false;
 	}, [gameId, state, load, displayName]);
 
@@ -265,6 +278,7 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 					</CardHeader>
 					<CardContent>
 						{error ? <div className="text-red-500">{error}</div> : null}
+						{errorMsg ? <div className="mb-3 text-sm text-red-600">{errorMsg}</div> : null}
 						<div className="mb-3 text-sm">Hi {displayName}!</div>
 						{isSpectator ? <div className="mb-3 text-amber-500 text-sm">You are a spectator. You can watch but not interact.</div> : null}
 						{state && state.seatsAssigned === false ? <div className="mb-3 text-slate-500 text-sm">Waiting for players… First two unique names/tokens take seats when they join.</div> : null}
@@ -292,7 +306,7 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 										<span className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800">Turn: {state.turn === "w" ? "White" : "Black"}</span>
 										<button onClick={copyLink} className="px-3 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">Copy link</button>
 									</div>
-									<div className="text-sm">You are: {state.seat ?? 'Spectator'}</div>
+									<div className="text-sm">You are: {state.seat ? (state.seat === 'w' ? 'White' : 'Black') : 'Spectator'}</div>
 									<div className="text-sm">White: {state.seats?.w?.name ?? '—'}</div>
 									<div className="text-sm">Black: {state.seats?.b?.name ?? '—'}</div>
 									{state.spectators && state.spectators.length ? (
