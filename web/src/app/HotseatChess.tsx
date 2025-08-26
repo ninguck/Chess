@@ -123,7 +123,7 @@ function computePathSquares(piece: string, from: Square, to: Square): Square[] {
 	return path;
 }
 
-function formatMove(m: any) {
+function formatMove(m: Move) {
 	const map: Record<string, string> = { p: "P", n: "N", b: "B", r: "R", q: "Q", k: "K" };
 	const piece = map[m.piece] ?? m.piece.toUpperCase();
 	const arrow = m.captured ? " x " : " → ";
@@ -207,7 +207,7 @@ export default function HotseatChess() {
 			? "bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-200"
 			: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200";
 
-	const verboseMoves = chess.history({ verbose: true }) as any[];
+	const verboseMoves = chess.history({ verbose: true }) as unknown as Move[];
 	const movePairs = [] as { index: number; white?: string; black?: string }[];
 	for (let i = 0; i < verboseMoves.length; i += 2) {
 		movePairs.push({
