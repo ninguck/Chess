@@ -15,6 +15,7 @@ export default function JoinByCode() {
 			setError("Enter a game code");
 			return;
 		}
+		try { localStorage.setItem(`chess.seat.${trimmed}`, "b"); } catch {}
 		router.push(`/online/${trimmed}`);
 	}
 

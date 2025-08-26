@@ -32,9 +32,10 @@ async function postMove(id: string, body: any) {
 
 export default function OnlineGamePage({ params }: { params: Promise<{ id: string }> }) {
 	const { id: gameId } = use(params);
+	const seat = (typeof window !== "undefined" ? localStorage.getItem(`chess.seat.${gameId}`) : null) as ("w" | "b" | null);
 	const [state, setState] = useState<ServerState | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [orientation, setOrientation] = useState<"white" | "black">("white");
+	const [orientation, setOrientation] = useState<"white" | "black">(seat === "b" ? "black" : "white");
 	const etagRef = useRef<string | null>(null);
 	const pollingRef = useRef<number | null>(null);
 
@@ -62,12 +63,11 @@ export default function OnlineGamePage({ params }: { params: Promise<{ id: strin
 		if (!state) return false;
 		const res = await postMove(gameId, { expectedVersion: state.version, from, to });
 		if (res.status === 200) {
-			await load(); // immediate refresh
-			setOrientation((o) => (o === "white" ? "black" : "white"));
+			await load();
 			return true;
 		}
 		if (res.status === 409) {
-			await load(); // get latest
+			await load();
 		}
 		return false;
 	}, [gameId, state, load]);
