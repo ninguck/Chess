@@ -259,13 +259,6 @@ export default function HotseatChess() {
 
 	return (
 		<div className="w-full max-w-7xl mx-auto flex flex-col gap-6">
-			<header className="flex items-center justify-between">
-				<div className="flex flex-col">
-					<h1 className="text-2xl font-semibold tracking-tight">Local Chess (Hotseat)</h1>
-					<p className="text-slate-600 dark:text-slate-300 text-sm">Two players take turns on the same device. Auto-queen promotion.</p>
-				</div>
-			</header>
-
 			<div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-8 items-start">
 				<div className="w-full">
 					<div className="w-full max-w-[min(92vw,720px)] mx-auto">
